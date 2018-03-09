@@ -189,6 +189,44 @@ void Corpus::EvalEnt(){
     this->fracEntPrior.Complete();
 }
 
+void Corpus::Init(const list<wstring> &wordList){
+    // length summary
+    Index size = 0;
+    for(list<wstring>::const_iterator ite = wordList.begin(); ite != wordList.end(); ite++){
+        size += ite->size();
+    }
+    this->corSize = size;
+    this->corChars = new wchar_t[size + 1];
+
+    // initialize the corChars, fracMerge and mfLabel
+    this->indexer.Clear();
+    this->indexer.Reserve(wordList.size());
+    this->fracMerge.clear();
+    this->mfLabel.clear();
+    this->fracMerge.push_back(vector<Index>(size + 1));
+    this->mfLabel.push_back(vector<bool>(size + 1));
+    vector<Index> &merge = this->fracMerge.back();
+    vector<bool> &label = this->mfLabel.back();
+    Index loc = 0;
+    for(list<wstring>::const_iterator ite = wordList.begin(); ite != wordList.end(); ite++){
+        this->indexer.Add(*ite);
+        merge.at(loc) = loc + ite->size();
+        label.at(loc) = mfSet.find(*ite) == mfSet.end();
+        for(Index s = 0; s < ite->size(); s++){
+            this->corChars[loc] = ite->at(s);
+            if(s != 0){
+                merge.at(loc) = 0;
+                label.at(loc) = true;
+            }
+            loc++;
+        }
+    }
+    this->corChars[size] = '\0';
+
+    FracFreq();
+    EvalEnt();
+}
+
 Corpus::Corpus(const string path, const string mergeForbidPath, unsigned int maxLen){
     setlocale(LC_ALL, "");
     this->corChars = nullptr;
@@ -196,8 +234,11 @@ Corpus::Corpus(const string path, const string mergeForbidPath, unsigned int max
     this->fracMerge = list<vector<Index> >();
     this->mfLabel = list<vector<bool> >();
 
+    // merge forbid characters
+    ReadMergeForbid(mergeForbidPath, this->mfSet);
+
     // get each character
-    list<wchar_t> tempCharList;
+    list<wstring> tempCharList;
     boost::filesystem::ifstream corpusFile;
     corpusFile.open(path);
     string line;
@@ -205,37 +246,28 @@ Corpus::Corpus(const string path, const string mergeForbidPath, unsigned int max
         getline(corpusFile, line);
         wstring wline = to_utf<wchar_t>(line, "utf-8");
         for(int c = 0; c < wline.size(); c++){
-            tempCharList.push_back(wline[c]);
+            tempCharList.push_back(wline.substr(c, 1));
         }
-        tempCharList.push_back('\n');
+        tempCharList.push_back(L"\n");
     }
-    this->indexer.Reserve(tempCharList.size());
-    
-    // put characters into array
-    this->corSize = tempCharList.size();
-    this->corChars = new wchar_t[tempCharList.size() + 1];
-    int i = 0;
-    for(list<wchar_t>::iterator ite = tempCharList.begin(); ite != tempCharList.end(); ite++){
-        this->corChars[i] = *ite;
-        const wstring ws(this->corChars + i, 1);
-        Index seq = this->indexer.Add(ws);
-        i++;
-    }
-    this->corChars[i] = '\0';
+    this->Init(tempCharList);    
+}
 
-    // merge forbid characters
-    boost::filesystem::ifstream mfFile;
-    mfFile.open(mergeForbidPath);
-    string mfLine;
-    while(!mfFile.eof()){
-        getline(mfFile, mfLine);
-        wstring mfWline = to_utf<wchar_t>(mfLine, "utf-8");
-        mfSet.insert(mfWline);
-    }
+Corpus::Corpus(const list<wstring> &wordList, const set<wstring> mfSet, Index maxLen){
+    setlocale(LC_ALL, "");
+    this->corChars = nullptr;
+    this->maxLen = maxLen;
+    this->fracMerge = list<vector<Index> >();
+    this->mfLabel = list<vector<bool> >();
+
+    this->mfSet = mfSet;
+    this->Init(wordList);
 }
 
 Corpus::~Corpus(){
-    delete[] corChars;
+    if(corChars != nullptr){
+        delete[] corChars;  
+    }
 }
 
 void Corpus::MergeSimple(){
@@ -405,7 +437,14 @@ void Corpus::MergeOnce(double threshold, const char option, const unsigned int m
                 Index totRight = this->fracEntNext.GetTot(indRight);
                 double viscRight = totRight >= minTot ? (entRight > 0 ? -log2(probRight) / entRight : 0) : DBL_MAX;
 
-                double viscosity = viscLeft < viscRight ? viscLeft : viscRight;
+                double viscosity = (viscLeft + viscRight) / 2; 
+                
+                const wstring mergedFrac = FracToWStr(left, right - left);
+                map<wstring, Index>::const_iterator mergedFreqIte = fracFreq2.find(mergedFrac);
+                if(mergedFreqIte == fracFreq2.end() || mergedFreqIte->second < minTot){
+                    viscosity = DBL_MAX;
+                }
+
                 if(viscosity < threshold){
                     probMultVec.push_back(viscosity); // entropy viscosity
                     probMultVecI.push_back(loc);
@@ -456,6 +495,19 @@ Index Corpus::GetFracFreq(const wstring &frac){
     return it == this->fracFreq.end() ? 0 : it->second;
 }
 
+void Corpus::GetLastMerge(list<wstring> &wordList){
+    wordList.clear();
+    if(this->fracMerge.size() == 0){
+        return;
+    }
+    vector<Index> &lastMerge = this->fracMerge.back();
+    for(Index i = 0; i < lastMerge.size(); i++){
+        if(lastMerge.at(i) != 0){
+            wordList.push_back(FracToWStr(i, lastMerge.at(i) - i));
+        }
+    }
+}
+
 void Corpus::PrintLastMerge(bool index, const string separator){
     vector<Index> &lastMerge = this->fracMerge.back();
     vector<bool> &lastLabel = this->mfLabel.back();
@@ -478,4 +530,20 @@ void Corpus::PrintMergeForbid(){
 
 Index Corpus::GetSize(){
     return this->corSize;
+}
+
+void Corpus::Clear(){
+    if(this->corChars != nullptr){
+        delete[] this->corChars;
+        this->corChars = nullptr;
+    }
+    this->maxLen = 0;
+    this->corSize = 0;
+    this->indexer.Clear();
+    this->mfSet.clear();
+    this->fracFreq.clear();
+    this->fracEntNext.Clear();
+    this->fracEntPrior.Clear();
+    this->fracMerge.clear();
+    this->mfLabel.clear();
 }

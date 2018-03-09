@@ -76,12 +76,15 @@ protected:
     // and save them into this->fracEntNext and this->fracEntPrior. 
     void EvalEnt();
 
+    void Init(const list<wstring> &wordList);
+    
 public: 
     // constructor
     // path: the path of corpus file
     // mergeForbidPath: the path of a file which contain some string line-by-line which are forbade to be merged, 
     // maxLen: max length of a word
     Corpus(const string path, const string mergeForbidPath, unsigned int maxLen);
+    Corpus(const list<wstring> &wordList, const set<wstring> mfSet, Index maxLen);
     ~Corpus();
 
     // merge some simple pattern such as date and number
@@ -96,6 +99,10 @@ public:
     // frac: a fraction
     Index GetFracFreq(const wstring &frac);
 
+    // get the last merge result
+    // wordList: a list which will receive the result
+    void GetLastMerge(list<wstring> &wordList);
+
     // print the result of last mergence
     // index: whether print the index of fraction or not
     void PrintLastMerge(bool index, const string separator);
@@ -105,4 +112,7 @@ public:
 
     // get the size of corpus.
     Index GetSize();
+
+    // clear all content
+    void Clear();
 };
