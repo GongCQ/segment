@@ -18,3 +18,7 @@ int Joint(const string &corpusPath, set<wstring> mfSet, const string &userDictPa
 
 void FindNew(const list<wstring> &segList, const list<wstring> &segMergeList, 
              set<wstring> &newWordSet, bool print);
+
+void ToFile(const string &targetPath, const string &seprator,
+            const vector<string> &fileNameVec, const vector<wstring> &contentVec, 
+            const vector<list<wstring> > &segVec, const vector<list<wstring> > &segMergeVec);

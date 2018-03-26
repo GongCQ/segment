@@ -12,6 +12,7 @@ using boost::filesystem::ofstream;
 using boost::filesystem::path;
 using boost::filesystem::exists;
 using boost::filesystem::remove;
+using boost::filesystem::create_directories;
 using boost::locale::conv::to_utf;
 using boost::locale::conv::from_utf;
 
@@ -137,6 +138,50 @@ void FindNew(const list<wstring> &segList, const list<wstring> &segMergeList,
             if(print){
                 cout<<from_utf(*word, "utf-8")<<" ";
             }
+        }
+    }
+}
+
+void ToFile(const string &targetPath, const string &seprator,
+            const vector<string> &fileNameVec, const vector<wstring> &contentVec, 
+            const vector<list<wstring> > &segVec, const vector<list<wstring> > &segMergeVec){
+    if(!exists(targetPath)){
+        create_directories(targetPath);
+    }
+    path newWordFilePath(targetPath);
+    newWordFilePath.append("new_word");
+    ofstream newWordFile(newWordFilePath);
+    for(unsigned int i = 0; i < fileNameVec.size(); i++){
+        set<wstring> newWordSet;
+        FindNew(segVec.at(i), segMergeVec.at(i), newWordSet, false);
+        newWordFile<<endl<<"[T]: "<< fileNameVec.at(i)<<endl<<"    ";
+        for(set<wstring>::const_iterator ite = newWordSet.begin(); ite != newWordSet.end(); ite++){
+            newWordFile<<from_utf(*ite, "utf-8")<<seprator;
+        }
+        newWordFile<<endl;
+    }
+
+    path segPath(targetPath);
+    segPath.append("seg");
+    path segMergePath(targetPath);
+    segMergePath.append("seg_merge");
+    create_directories(segPath);
+    create_directories(segMergePath);
+    for(unsigned int i = 0; i < fileNameVec.size(); i++){
+        path segFilePath(segPath);
+        segFilePath.append(fileNameVec.at(i));
+        ofstream segFile(segFilePath);
+        const list<wstring> &segList = segVec.at(i);
+        for(list<wstring>::const_iterator ite = segList.begin(); ite != segList.end(); ite++){
+            segFile<<from_utf(*ite, "utf-8")<<seprator;
+        }
+
+        path segMergeFilePath(segMergePath);
+        segMergeFilePath.append(fileNameVec.at(i));
+        ofstream segMergeFile(segMergeFilePath);
+        const list<wstring> &segMergeList = segMergeVec.at(i);
+        for(list<wstring>::const_iterator ite = segMergeList.begin(); ite != segMergeList.end(); ite++){
+            segMergeFile<<from_utf(*ite, "utf-8")<<seprator;
         }
     }
 }
